@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "@prisma/client": "^5.8.0",
+    "octokit": "^5.0.5",
+    "pg": "^8.17.2"
+  },
+  "devDependencies": {
+    "prisma": "^5.8.0"
+  }
+}
