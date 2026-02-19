@@ -7,8 +7,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")   // pooler — used at runtime
+  directUrl = env("DIRECT_URL")     // direct — used for prisma db push / migrations
 }
 
 // User (Admin/Developer) 
@@ -233,3 +234,126 @@ model RuleTemplate {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+// ============================================================
+// CI/CD HEALING AGENT MODELS (Phase 1.2)
+// ============================================================
+
+// Tracks a single end-to-end healing agent run 
+// (triggered from the dashboard with a repo URL + team info)
+model AgentRun {
+  id           String    @id @default(cuid())
+
+  // Input
+  repoUrl      String              // e.g. "https://github.com/org/repo"
+  repoOwner    String              // e.g. "org"
+  repoName     String              // e.g. "repo"
+  teamName     String              // e.g. "RIFT ORGANISERS"
+  leaderName   String              // e.g. "Saiyam Kumar"
+  branchName   String              // e.g. "RIFT_ORGANISERS_SAIYAM_KUMAR_AI_Fix"
+
+  // Run lifecycle
+  status       RunStatus @default(QUEUED)
+  startedAt    DateTime  @default(now())
+  completedAt  DateTime?
+
+  // Results
+  totalFailures   Int  @default(0)  // Failures detected
+  totalFixes      Int  @default(0)  // Fixes successfully applied
+  totalCommits    Int  @default(0)  // Commits made (for efficiency penalty)
+  cicdStatus      CICDResult?       // Final pipeline result
+  iterationsUsed  Int  @default(0)  // How many retry loops were needed
+
+  // Scoring (computed at end of run)
+  scoreBase             Int @default(100)
+  scoreSpeedBonus       Int @default(0)
+  scoreEfficiencyPenalty Int @default(0)
+  scoreFinal            Int @default(100)
+
+  // Relations
+  fixes      Fix[]
+  cicdRuns   CICDRun[]
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+// A single code fix applied by the agent during a run
+model Fix {
+  id         String  @id @default(cuid())
+  agentRunId String
+  agentRun   AgentRun @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+
+  // Location
+  filePath   String  // e.g. "src/utils.py"
+  lineNumber Int     // e.g. 15
+
+  // Classification (matches hackathon bug type categories)
+  bugType    BugType // LINTING | SYNTAX | LOGIC | TYPE_ERROR | IMPORT | INDENTATION
+
+  // What was done
+  commitMessage  String  @db.Text  // Full commit message with [AI-AGENT] prefix
+  commitSha      String?           // SHA of the commit that applied this fix
+  originalCode   String? @db.Text  // Code before fix (for reference)
+  fixedCode      String? @db.Text  // Code after fix
+
+  // Outcome
+  status     FixStatus @default(PENDING)  // FIXED | FAILED | PENDING
+
+  createdAt  DateTime @default(now())
+}
+
+// A single CI/CD pipeline run triggered by the agent 
+// (one entry per push/retry iteration)
+model CICDRun {
+  id         String   @id @default(cuid())
+  agentRunId String
+  agentRun   AgentRun @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+
+  // Which iteration this is (1-based, max = configurable retry limit)
+  iteration  Int
+
+  // GitHub Actions workflow info
+  workflowRunId  String?   // GitHub Actions run ID
+  result         CICDResult  // PASSED | FAILED | TIMED_OUT
+
+  // Timing
+  triggeredAt    DateTime  @default(now())
+  completedAt    DateTime?
+
+  createdAt   DateTime @default(now())
+}
+
+// ============================================================
+// ENUMS FOR HEALING AGENT
+// ============================================================
+
+enum RunStatus {
+  QUEUED       // Job in BullMQ, not yet started
+  RUNNING      // Agent actively working
+  COMPLETED    // All tests pass
+  FAILED       // Exhausted retries, tests still failing
+  ERROR        // Unexpected error during run
+}
+
+enum FixStatus {
+  PENDING  // Fix generated, not yet committed
+  FIXED    // Fix applied and committed successfully
+  FAILED   // Fix failed to apply or caused new errors
+}
+
+enum BugType {
+  LINTING
+  SYNTAX
+  LOGIC
+  TYPE_ERROR
+  IMPORT
+  INDENTATION
+}
+
+enum CICDResult {
+  PASSED
+  FAILED
+  TIMED_OUT
+}
+
