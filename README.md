@@ -38,7 +38,7 @@ Built using **LangGraph** for resilient, deterministic state management, the sys
 The project architecture strictly separates the User Interface (React), the API Gateway (FastAPI), and the highly scalable Autonomy Engine (LangGraph).
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#1E293B', 'primaryTextColor': '#F8FAFC', 'edgeLabelBackground':'#ffffff', 'tertiaryColor': '#e2e8f0', 'lineColor': '#475569'}}}%%
+%%{init: {'theme': 'neutral'}}%%
 flowchart TB
     %% Definitions
     subgraph UI ["🖥️ User Interface"]
